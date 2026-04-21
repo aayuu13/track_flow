@@ -1,152 +1,173 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../App';
-import { subscribeToTransactions, subscribeToProducts } from '../firebase/db';
-import { calculatePL } from '../utils/calculatePL';
-import { getDateRange, filterByDateRange } from '../utils/dateUtils';
+import { subscribeToProducts, subscribeToTransactions } from '../firebase/db';
+
 import SalesLineChart from '../charts/SalesLineChart';
 import RevenueExpensesBarChart from '../charts/RevenueExpensesBarChart';
-import InventoryPieChart from '../charts/InventoryPieChart';
 
-export default function Reports() {
+export default function Dashboard() {
   const { user } = useContext(AuthContext);
-  const [transactions, setTransactions] = useState([]);
   const [products, setProducts] = useState([]);
-  const [dateRange, setDateRange] = useState('30');
-  const [plData, setPlData] = useState({});
+  const [transactions, setTransactions] = useState([]);
+  const [stats, setStats] = useState({
+    totalInventoryValue: 0,
+    dailySales: 0,
+    dailyExpenses: 0,
+    topSellingItems: [],
+  });
 
   useEffect(() => {
     if (!user) return;
-    const unsubTx = subscribeToTransactions(user.uid, setTransactions);
-    const unsubProd = subscribeToProducts(user.uid, setProducts);
+
+    const unsubProducts = subscribeToProducts(user.uid, setProducts);
+    const unsubTransactions = subscribeToTransactions(user.uid, setTransactions);
+
     return () => {
-      unsubTx();
-      unsubProd();
+      unsubProducts();
+      unsubTransactions();
     };
   }, [user]);
 
   useEffect(() => {
-    if (transactions.length > 0) {
-      const { start, end } = getDateRange(parseInt(dateRange));
-      const filtered = filterByDateRange(transactions, start, end);
-      const pl = calculatePL(filtered);
-      setPlData(pl);
-    }
-  }, [transactions, dateRange]);
+    const totalInventoryValue = products.reduce(
+      (sum, p) => sum + (p.stock * p.sellingPrice || 0),
+      0
+    );
 
-  const expenseByCategory = {};
-  transactions
-    .filter((tx) => tx.type === 'expense')
-    .forEach((tx) => {
-      const category = tx.category || 'Other';
-      expenseByCategory[category] = (expenseByCategory[category] || 0) + (tx.amount || 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const todayTransactions = transactions.filter((tx) => {
+      const txDate = tx.date?.toDate ? tx.date.toDate() : new Date(tx.date);
+      txDate.setHours(0, 0, 0, 0);
+      return txDate.getTime() === today.getTime();
     });
 
+    const dailySales = todayTransactions
+      .filter((tx) => tx.type === 'sales')
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
+    const dailyExpenses = todayTransactions
+      .filter((tx) => tx.type === 'expense')
+      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
+    const salesByProduct = {};
+    transactions
+      .filter((tx) => tx.type === 'sales')
+      .forEach((tx) => {
+        const productName =
+          products.find((p) => p.id === tx.productId)?.name || 'Unknown';
+        salesByProduct[productName] =
+          (salesByProduct[productName] || 0) + (tx.quantity || 0);
+      });
+
+    const topSellingItems = Object.entries(salesByProduct)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, quantity]) => ({ name, quantity }));
+
+    setStats({
+      totalInventoryValue,
+      dailySales,
+      dailyExpenses,
+      topSellingItems,
+    });
+  }, [products, transactions]);
+
+  const Card = ({ children, className = '' }) => (
+    <div className={`bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-2xl shadow-sm ${className}`}>
+      {children}
+    </div>
+  );
+
   return (
-    <div className="md:ml-64 pt-24 p-8 min-h-screen bg-slate-50">
+    <div className="md:ml-64 pt-24 px-8 pb-10 min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-900 mb-2">Reports & Analytics</h1>
-        <p className="text-slate-600 text-base">Analyze your business performance and financial metrics</p>
+      <div className="mb-10">
+        <h1 className="text-4xl font-semibold tracking-tight text-slate-900">
+          Dashboard
+        </h1>
+        <p className="text-slate-500 mt-2">
+          Real-time overview of your business performance
+        </p>
       </div>
 
-      {/* Date Range Filter */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-8">
-        <div className="flex items-end gap-4">
-          <div className="flex-1 max-w-xs">
-            <label className="block text-slate-700 font-semibold text-sm mb-2">Date Range</label>
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
-            >
-              <option value="7">Last 7 Days</option>
-              <option value="30">Last 30 Days</option>
-              <option value="90">Last 90 Days</option>
-              <option value="365">Last Year</option>
-            </select>
-          </div>
-        </div>
+      {/* KPI GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-10">
+
+        <Card className="p-6 border-l-4 border-l-teal-500">
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Inventory Value</p>
+          <p className="text-3xl font-semibold mt-2 text-slate-900">
+            ${stats.totalInventoryValue.toLocaleString()}
+          </p>
+        </Card>
+
+        <Card className="p-6 border-l-4 border-l-sky-500">
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Today Sales</p>
+          <p className="text-3xl font-semibold mt-2 text-slate-900">
+            ${stats.dailySales.toLocaleString()}
+          </p>
+        </Card>
+
+        <Card className="p-6 border-l-4 border-l-rose-500">
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Expenses</p>
+          <p className="text-3xl font-semibold mt-2 text-slate-900">
+            ${stats.dailyExpenses.toLocaleString()}
+          </p>
+        </Card>
+
+        <Card className="p-6 border-l-4 border-l-indigo-500">
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Products</p>
+          <p className="text-3xl font-semibold mt-2 text-slate-900">
+            {products.length}
+          </p>
+        </Card>
       </div>
 
-      {/* P&L Statement */}
-      <div className="bg-white p-7 rounded-xl shadow-sm border border-slate-200 mb-8">
-        <h2 className="text-lg font-semibold text-slate-900 mb-6">Profit & Loss Statement</h2>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <p className="text-slate-600 text-sm font-medium">Revenue</p>
-            <p className="text-2xl font-bold text-green-600 mt-2">${(plData.revenue || 0).toFixed(2)}</p>
-          </div>
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <p className="text-slate-600 text-sm font-medium">COGS</p>
-            <p className="text-2xl font-bold text-orange-600 mt-2">${(plData.cogs || 0).toFixed(2)}</p>
-          </div>
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <p className="text-slate-600 text-sm font-medium">Gross Profit</p>
-            <p className="text-2xl font-bold text-blue-600 mt-2">${(plData.grossProfit || 0).toFixed(2)}</p>
-          </div>
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <p className="text-slate-600 text-sm font-medium">Expenses</p>
-            <p className="text-2xl font-bold text-red-600 mt-2">${(plData.expenses || 0).toFixed(2)}</p>
-          </div>
-          <div className="bg-teal-50 p-4 rounded-lg border-2 border-teal-200">
-            <p className="text-slate-600 text-sm font-medium">Net Profit</p>
-            <p className={`text-2xl font-bold mt-2 ${(plData.netProfit || 0) >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
-              ${(plData.netProfit || 0).toFixed(2)}
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* CHARTS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white p-7 rounded-xl shadow-sm border border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Sales Trend</h2>
+        <Card className="p-6">
+          <h2 className="text-sm font-medium text-slate-600 mb-4">
+            Sales Trend
+          </h2>
           <SalesLineChart transactions={transactions} />
-        </div>
+        </Card>
 
-        <div className="bg-white p-7 rounded-xl shadow-sm border border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Revenue vs Expenses</h2>
+        <Card className="p-6">
+          <h2 className="text-sm font-medium text-slate-600 mb-4">
+            Revenue vs Expenses
+          </h2>
           <RevenueExpensesBarChart transactions={transactions} />
-        </div>
+        </Card>
+
       </div>
 
-      {/* Inventory Distribution */}
-      <div className="bg-white p-7 rounded-xl shadow-sm border border-slate-200 mb-8">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Inventory Distribution</h2>
-        <InventoryPieChart products={products} />
-      </div>
+      {/* TOP PRODUCTS */}
+      <Card className="p-6">
+        <h2 className="text-sm font-medium text-slate-600 mb-4">
+          Top Selling Items
+        </h2>
 
-      {/* Expense Breakdown */}
-      {Object.keys(expenseByCategory).length > 0 && (
-        <div className="bg-white p-7 rounded-xl shadow-sm border border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Expense Breakdown by Category</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Category</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Amount</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Percentage</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {Object.entries(expenseByCategory).map(([category, amount]) => {
-                  const total = Object.values(expenseByCategory).reduce((a, b) => a + b, 0);
-                  return (
-                    <tr key={category} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 text-slate-900">{category}</td>
-                      <td className="px-4 py-3 text-slate-900 font-medium">${amount.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {((amount / total) * 100).toFixed(2)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        {stats.topSellingItems.length === 0 ? (
+          <p className="text-slate-400 text-sm">No sales data yet</p>
+        ) : (
+          <div className="space-y-3">
+            {stats.topSellingItems.map((item, idx) => (
+              <div
+                key={idx}
+                className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0"
+              >
+                <span className="text-slate-700">{item.name}</span>
+                <span className="text-slate-900 font-medium">
+                  {item.quantity}
+                </span>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </Card>
     </div>
   );
 }

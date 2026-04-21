@@ -8,76 +8,127 @@ export default function Sidebar() {
   const { isOpen, setIsOpen } = useContext(SidebarContext);
   const location = useLocation();
 
-  // Close sidebar on route change
   useEffect(() => {
     setIsOpen(false);
-  }, [location, setIsOpen]);
+  }, [location]);
 
   if (!user) return null;
 
   const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { path: '/inventory', label: 'Inventory', icon: '📦' },
-    { path: '/transactions', label: 'Transactions', icon: '💳' },
-    { path: '/reports', label: 'Reports', icon: '📈' },
-    { path: '/settings', label: 'Settings', icon: '⚙️' },
+    { path: '/dashboard', label: 'Dashboard', icon: '▣' },
+    { path: '/inventory', label: 'Inventory', icon: '▦' },
+    { path: '/transactions', label: 'Transactions', icon: '◉' },
+    { path: '/reports', label: 'Reports', icon: '▤' },
+    { path: '/settings', label: 'Settings', icon: '⚙' },
   ];
+
+  const Item = ({ item, isActive }) => (
+    <Link
+      to={item.path}
+      className={`relative flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-all group
+      ${isActive
+        ? 'text-slate-900 bg-white shadow-sm'
+        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+      }`}
+    >
+      {/* Active indicator bar */}
+      {isActive && (
+        <div className="absolute left-0 top-2 bottom-2 w-1 bg-slate-900 rounded-full" />
+      )}
+
+      <span className={`text-lg ${isActive ? 'scale-110' : 'group-hover:scale-105'} transition`}>
+        {item.icon}
+      </span>
+
+      <span className="font-medium">{item.label}</span>
+    </Link>
+  );
 
   return (
     <>
-      {/* Desktop Sidebar - Tablet and above */}
-      <aside className="hidden md:block bg-slate-950 border-r border-slate-800 w-64 min-h-screen p-6 fixed left-0 top-24 bottom-0 overflow-y-auto z-40">
-        <nav className="space-y-2">
-          {navItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`block px-4 py-3 rounded-md font-semibold transition-all text-base flex items-center gap-3 ${
-                location.pathname === item.path
-                  ? 'bg-teal-600/90 text-white shadow-md'
-                  : 'text-slate-300 hover:bg-slate-900 hover:text-teal-400'
-              }`}
-            >
-              <span className="text-lg">{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          ))}
-        </nav>
-      </aside>
+      {/* DESKTOP SIDEBAR */}
+      <aside className="hidden md:flex fixed left-0 top-0 h-screen w-64 bg-white/70 backdrop-blur-md border-r border-slate-200 z-40">
 
-      {/* Mobile Sidebar - Phone Only */}
-      <aside
-        className={`fixed left-0 top-20 w-56 max-w-[75vw] h-screen bg-slate-950 border-r border-slate-700/50 p-3 overflow-y-auto transform transition-transform duration-300 ease-in-out z-40 md:hidden shadow-2xl ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <nav className="space-y-1">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            return (
-              <Link
+        <div className="w-full px-5 py-6 flex flex-col">
+
+          {/* BRAND */}
+          <div className="mb-8 px-2">
+            <div className="text-xl font-semibold text-slate-900">
+              TrackFlow
+            </div>
+            <div className="text-xs text-slate-500">
+              Business OS
+            </div>
+          </div>
+
+          {/* NAV */}
+          <nav className="space-y-1">
+            {navItems.map((item) => (
+              <Item
                 key={item.path}
-                to={item.path}
-                className={`block px-3 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2.5 group text-sm ${
-                  isActive
-                    ? 'bg-teal-600 text-white shadow-md'
-                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-teal-400 active:bg-slate-700'
-                }`}
-              >
-                <span className={`text-base transition-transform duration-200 ${isActive ? 'scale-110' : 'group-hover:scale-105'}`}>{item.icon}</span>
-                <span className="font-semibold">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+                item={item}
+                isActive={location.pathname === item.path}
+              />
+            ))}
+          </nav>
+
+          {/* FOOTER USER */}
+          <div className="mt-auto pt-6 border-t border-slate-200">
+            <div className="flex items-center gap-3 px-2">
+              <div className="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-sm font-medium">
+                {user.email?.charAt(0).toUpperCase()}
+              </div>
+
+              <div className="flex flex-col">
+                <span className="text-sm text-slate-800 truncate max-w-[150px]">
+                  {user.email}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Active
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </aside>
 
-      {/* Overlay Backdrop - Phone Only */}
+      {/* MOBILE SIDEBAR */}
+      <aside
+        className={`fixed top-0 left-0 h-full w-72 bg-white z-50 shadow-2xl transform transition-transform duration-300 md:hidden
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+
+        <div className="p-5 flex flex-col h-full">
+
+          <div className="mb-6">
+            <div className="text-lg font-semibold text-slate-900">
+              TrackFlow
+            </div>
+            <div className="text-xs text-slate-500">
+              Navigation
+            </div>
+          </div>
+
+          <nav className="space-y-1">
+            {navItems.map((item) => (
+              <Item
+                key={item.path}
+                item={item}
+                isActive={location.pathname === item.path}
+              />
+            ))}
+          </nav>
+
+        </div>
+      </aside>
+
+      {/* BACKDROP */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 md:hidden z-30"
           onClick={() => setIsOpen(false)}
-        ></div>
+          className="fixed inset-0 bg-black/20 md:hidden z-40"
+        />
       )}
     </>
   );
