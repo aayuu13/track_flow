@@ -1,173 +1,170 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../App';
-import { subscribeToProducts, subscribeToTransactions } from '../firebase/db';
-
+import { subscribeToTransactions, subscribeToProducts } from '../firebase/db';
+import { calculatePL } from '../utils/calculatePL';
+import { getDateRange, filterByDateRange } from '../utils/dateUtils';
 import SalesLineChart from '../charts/SalesLineChart';
 import RevenueExpensesBarChart from '../charts/RevenueExpensesBarChart';
+import InventoryPieChart from '../charts/InventoryPieChart';
 
-export default function Dashboard() {
+export default function Reports() {
   const { user } = useContext(AuthContext);
-  const [products, setProducts] = useState([]);
   const [transactions, setTransactions] = useState([]);
-  const [stats, setStats] = useState({
-    totalInventoryValue: 0,
-    dailySales: 0,
-    dailyExpenses: 0,
-    topSellingItems: [],
-  });
+  const [products, setProducts] = useState([]);
+  const [dateRange, setDateRange] = useState('30');
+  const [plData, setPlData] = useState({});
 
   useEffect(() => {
     if (!user) return;
-
-    const unsubProducts = subscribeToProducts(user.uid, setProducts);
-    const unsubTransactions = subscribeToTransactions(user.uid, setTransactions);
-
+    const unsubTx = subscribeToTransactions(user.uid, setTransactions);
+    const unsubProd = subscribeToProducts(user.uid, setProducts);
     return () => {
-      unsubProducts();
-      unsubTransactions();
+      unsubTx();
+      unsubProd();
     };
   }, [user]);
 
   useEffect(() => {
-    const totalInventoryValue = products.reduce(
-      (sum, p) => sum + (p.stock * p.sellingPrice || 0),
-      0
-    );
+    if (transactions.length > 0) {
+      const { start, end } = getDateRange(parseInt(dateRange));
+      const filtered = filterByDateRange(transactions, start, end);
+      const pl = calculatePL(filtered);
+      setPlData(pl);
+    }
+  }, [transactions, dateRange]);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const todayTransactions = transactions.filter((tx) => {
-      const txDate = tx.date?.toDate ? tx.date.toDate() : new Date(tx.date);
-      txDate.setHours(0, 0, 0, 0);
-      return txDate.getTime() === today.getTime();
+  const expenseByCategory = {};
+  transactions
+    .filter((tx) => tx.type === 'expense')
+    .forEach((tx) => {
+      const category = tx.category || 'Other';
+      expenseByCategory[category] =
+        (expenseByCategory[category] || 0) + (tx.amount || 0);
     });
 
-    const dailySales = todayTransactions
-      .filter((tx) => tx.type === 'sales')
-      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-
-    const dailyExpenses = todayTransactions
-      .filter((tx) => tx.type === 'expense')
-      .reduce((sum, tx) => sum + (tx.amount || 0), 0);
-
-    const salesByProduct = {};
-    transactions
-      .filter((tx) => tx.type === 'sales')
-      .forEach((tx) => {
-        const productName =
-          products.find((p) => p.id === tx.productId)?.name || 'Unknown';
-        salesByProduct[productName] =
-          (salesByProduct[productName] || 0) + (tx.quantity || 0);
-      });
-
-    const topSellingItems = Object.entries(salesByProduct)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, quantity]) => ({ name, quantity }));
-
-    setStats({
-      totalInventoryValue,
-      dailySales,
-      dailyExpenses,
-      topSellingItems,
-    });
-  }, [products, transactions]);
-
-  const Card = ({ children, className = '' }) => (
-    <div className={`bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-2xl shadow-sm ${className}`}>
-      {children}
-    </div>
-  );
+  const totalExpense = Object.values(expenseByCategory).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="md:ml-64 pt-24 px-8 pb-10 min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      
+    <div className="md:ml-64 pt-24 px-6 md:px-10 pb-10 bg-[#0B0F17] min-h-screen text-slate-200">
+
       {/* Header */}
       <div className="mb-10">
-        <h1 className="text-4xl font-semibold tracking-tight text-slate-900">
-          Dashboard
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
+          Reports & Analytics
         </h1>
-        <p className="text-slate-500 mt-2">
-          Real-time overview of your business performance
+        <p className="text-slate-400 mt-2 text-sm">
+          Financial insights and performance overview
         </p>
       </div>
 
-      {/* KPI GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-10">
-
-        <Card className="p-6 border-l-4 border-l-teal-500">
-          <p className="text-xs text-slate-500 uppercase tracking-wide">Inventory Value</p>
-          <p className="text-3xl font-semibold mt-2 text-slate-900">
-            ${stats.totalInventoryValue.toLocaleString()}
-          </p>
-        </Card>
-
-        <Card className="p-6 border-l-4 border-l-sky-500">
-          <p className="text-xs text-slate-500 uppercase tracking-wide">Today Sales</p>
-          <p className="text-3xl font-semibold mt-2 text-slate-900">
-            ${stats.dailySales.toLocaleString()}
-          </p>
-        </Card>
-
-        <Card className="p-6 border-l-4 border-l-rose-500">
-          <p className="text-xs text-slate-500 uppercase tracking-wide">Expenses</p>
-          <p className="text-3xl font-semibold mt-2 text-slate-900">
-            ${stats.dailyExpenses.toLocaleString()}
-          </p>
-        </Card>
-
-        <Card className="p-6 border-l-4 border-l-indigo-500">
-          <p className="text-xs text-slate-500 uppercase tracking-wide">Products</p>
-          <p className="text-3xl font-semibold mt-2 text-slate-900">
-            {products.length}
-          </p>
-        </Card>
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3 mb-8">
+        {['7', '30', '90', '365'].map((range) => (
+          <button
+            key={range}
+            onClick={() => setDateRange(range)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              dateRange === range
+                ? 'bg-white text-black'
+                : 'bg-white/5 hover:bg-white/10 text-slate-300'
+            }`}
+          >
+            {range === '7'
+              ? '7D'
+              : range === '30'
+              ? '30D'
+              : range === '90'
+              ? '90D'
+              : '1Y'}
+          </button>
+        ))}
       </div>
 
-      {/* CHARTS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+      {/* P&L Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-10">
+        {[
+          { label: 'Revenue', value: plData.revenue, color: 'text-emerald-400' },
+          { label: 'COGS', value: plData.cogs, color: 'text-orange-400' },
+          { label: 'Gross Profit', value: plData.grossProfit, color: 'text-blue-400' },
+          { label: 'Expenses', value: plData.expenses, color: 'text-red-400' },
+          {
+            label: 'Net Profit',
+            value: plData.netProfit,
+            color:
+              (plData.netProfit || 0) >= 0
+                ? 'text-emerald-400'
+                : 'text-red-400',
+          },
+        ].map((item, i) => (
+          <div
+            key={i}
+            className="bg-white/[0.03] border border-white/10 rounded-xl p-5 hover:bg-white/[0.06] transition"
+          >
+            <p className="text-xs text-slate-400 mb-2">{item.label}</p>
+            <p className={`text-xl font-semibold ${item.color}`}>
+              ${Number(item.value || 0).toLocaleString()}
+            </p>
+          </div>
+        ))}
+      </div>
 
-        <Card className="p-6">
-          <h2 className="text-sm font-medium text-slate-600 mb-4">
+      {/* Charts */}
+      <div className="grid md:grid-cols-2 gap-6 mb-10">
+        <div className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
+          <h2 className="text-sm font-medium text-slate-400 mb-4">
             Sales Trend
           </h2>
           <SalesLineChart transactions={transactions} />
-        </Card>
+        </div>
 
-        <Card className="p-6">
-          <h2 className="text-sm font-medium text-slate-600 mb-4">
+        <div className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
+          <h2 className="text-sm font-medium text-slate-400 mb-4">
             Revenue vs Expenses
           </h2>
           <RevenueExpensesBarChart transactions={transactions} />
-        </Card>
-
+        </div>
       </div>
 
-      {/* TOP PRODUCTS */}
-      <Card className="p-6">
-        <h2 className="text-sm font-medium text-slate-600 mb-4">
-          Top Selling Items
+      {/* Inventory */}
+      <div className="bg-white/[0.03] border border-white/10 rounded-xl p-6 mb-10">
+        <h2 className="text-sm font-medium text-slate-400 mb-4">
+          Inventory Distribution
         </h2>
+        <InventoryPieChart products={products} />
+      </div>
 
-        {stats.topSellingItems.length === 0 ? (
-          <p className="text-slate-400 text-sm">No sales data yet</p>
-        ) : (
-          <div className="space-y-3">
-            {stats.topSellingItems.map((item, idx) => (
-              <div
-                key={idx}
-                className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0"
-              >
-                <span className="text-slate-700">{item.name}</span>
-                <span className="text-slate-900 font-medium">
-                  {item.quantity}
-                </span>
-              </div>
-            ))}
+      {/* Expense Breakdown */}
+      {Object.keys(expenseByCategory).length > 0 && (
+        <div className="bg-white/[0.03] border border-white/10 rounded-xl p-6">
+          <h2 className="text-sm font-medium text-slate-400 mb-6">
+            Expense Breakdown
+          </h2>
+
+          <div className="space-y-4">
+            {Object.entries(expenseByCategory).map(([category, amount]) => {
+              const percent = ((amount / totalExpense) * 100).toFixed(1);
+
+              return (
+                <div key={category}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-slate-300">{category}</span>
+                    <span className="text-slate-400">
+                      ${amount.toFixed(2)} • {percent}%
+                    </span>
+                  </div>
+
+                  <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-teal-400 to-cyan-400"
+                      style={{ width: `${percent}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
-      </Card>
+        </div>
+      )}
     </div>
   );
 }
